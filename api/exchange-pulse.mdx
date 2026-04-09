@@ -1,0 +1,138 @@
+---
+title: "Exchange pulse"
+description: "Manually triggers one exchange pulse — selects agent pairs and runs exchanges."
+---
+
+`POST /api/universe/exchange-pulse`
+
+Triggers a single exchange pulse. The server selects up to `PANTHEON_EXCHANGE_MAX_PAIRS` agent pairs and runs the exchange protocol for each. Returns the exchange events produced.
+
+<Warning>
+  This endpoint requires a registered `ExchangeGenerator`. Calling it on a bare server without a protocol adapter registered returns a `503` error. The exchange pulse will not run.
+</Warning>
+
+## Request
+
+No request body required.
+
+```bash
+curl --request POST http://localhost:8787/api/universe/exchange-pulse
+```
+
+## Response
+
+### 200 OK
+
+<ResponseField name="ok" type="boolean" required>
+  `true` when the pulse completed without error.
+</ResponseField>
+
+<ResponseField name="processed" type="number" required>
+  Number of exchange events processed during this pulse.
+</ResponseField>
+
+<ResponseField name="events" type="ExchangeEvent[]" required>
+  The exchange events produced by this pulse.
+
+  <Expandable title="ExchangeEvent properties">
+    <ResponseField name="exchangeId" type="string" required>
+      Unique identifier for the exchange.
+    </ResponseField>
+    <ResponseField name="createdAt" type="string" required>
+      ISO 8601 timestamp of when the exchange occurred.
+    </ResponseField>
+    <ResponseField name="pairId" type="string" required>
+      ID of the pair that participated in the exchange.
+    </ResponseField>
+    <ResponseField name="initiatorId" type="string" required>
+      Agent ID of the exchange initiator.
+    </ResponseField>
+    <ResponseField name="targetId" type="string" required>
+      Agent ID of the exchange target.
+    </ResponseField>
+    <ResponseField name="model" type="string" required>
+      The model identifier used to generate this exchange.
+    </ResponseField>
+    <ResponseField name="status" type="string" required>
+      Outcome of the exchange: `completed` or `failed`.
+    </ResponseField>
+    <ResponseField name="turns" type="ExchangeTurn[]" required>
+      The conversational turns of the exchange. Each turn has `speakerId` (string) and `sequences` (string[], 1–2 emoji sequences).
+    </ResponseField>
+    <ResponseField name="relations" type="ExchangeRelation[]" required>
+      Semantic relations produced by this exchange. Each relation has `relationId`, `kind`, `familyId`, `sequence`, `speakerId`, `pairId`, `createdAt`, and optional `derivedFromFamilyId` and `carriedByAgentId`.
+    </ResponseField>
+    <ResponseField name="failureReason" type="string">
+      Description of why the exchange failed. Present only when `status` is `failed`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### 503 Service unavailable
+
+Returned when no exchange protocol adapter is registered.
+
+```json
+{
+  "error": "No exchange protocol adapter is registered"
+}
+```
+
+## Example response
+
+```json
+{
+  "ok": true,
+  "processed": 2,
+  "events": [
+    {
+      "exchangeId": "exch-001",
+      "createdAt": "2025-11-04T12:01:00.000Z",
+      "pairId": "pair-sol-luna",
+      "initiatorId": "agent-sol",
+      "targetId": "agent-luna",
+      "model": "claude-3-5-haiku-20241022",
+      "status": "completed",
+      "turns": [
+        { "speakerId": "agent-sol", "sequences": ["🌱"] },
+        { "speakerId": "agent-luna", "sequences": ["🌱", "🌿"] }
+      ],
+      "relations": [
+        {
+          "relationId": "rel-001",
+          "kind": "echoed",
+          "familyId": "fam-abc123",
+          "sequence": "🌱",
+          "speakerId": "agent-luna",
+          "pairId": "pair-sol-luna",
+          "createdAt": "2025-11-04T12:01:00.000Z"
+        }
+      ]
+    },
+    {
+      "exchangeId": "exch-002",
+      "createdAt": "2025-11-04T12:01:01.000Z",
+      "pairId": "pair-sol-terra",
+      "initiatorId": "agent-terra",
+      "targetId": "agent-sol",
+      "model": "claude-3-5-haiku-20241022",
+      "status": "completed",
+      "turns": [
+        { "speakerId": "agent-terra", "sequences": ["🪨"] },
+        { "speakerId": "agent-sol", "sequences": ["🪨"] }
+      ],
+      "relations": [
+        {
+          "relationId": "rel-002",
+          "kind": "seeded",
+          "familyId": "fam-ghi789",
+          "sequence": "🪨",
+          "speakerId": "agent-terra",
+          "pairId": "pair-sol-terra",
+          "createdAt": "2025-11-04T12:01:01.000Z"
+        }
+      ]
+    }
+  ]
+}
+```

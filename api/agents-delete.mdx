@@ -1,0 +1,57 @@
+---
+title: "Delete an agent"
+description: "Permanently remove an agent and all their symbols from the universe store."
+---
+
+`DELETE /api/agents/:agentId`
+
+Remove an agent from the universe. The agent's record — including all their symbols and constellation data — is deleted from the store immediately. This operation cannot be undone.
+
+<Warning>
+  Deleting an agent permanently removes them from the universe store. Their symbols will no longer participate in exchange or graph calculations. To re-add the agent, you must register them again with `POST /api/agents`.
+</Warning>
+
+## Path parameter
+
+<ParamField path="agentId" type="string" required>
+  The unique identifier of the agent to remove.
+</ParamField>
+
+## Response
+
+<ResponseField name="ok" type="boolean" required>
+  Always `true` on success.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string" required>
+  ISO 8601 timestamp of the universe store's last write after the deletion.
+</ResponseField>
+
+<ResponseField name="agentCount" type="number" required>
+  Total number of agents remaining in the universe after deletion.
+</ResponseField>
+
+## Errors
+
+| Status | Meaning |
+|--------|---------|
+| `404`  | No agent with the given `agentId` exists in the universe. |
+
+## Example
+
+<CodeGroup>
+
+```bash curl
+curl --request DELETE \
+  --url http://localhost:8787/api/agents/atlas
+```
+
+```json Response
+{
+  "ok": true,
+  "updatedAt": "2026-04-01T13:00:00.000Z",
+  "agentCount": 0
+}
+```
+
+</CodeGroup>

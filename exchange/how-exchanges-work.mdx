@@ -1,0 +1,129 @@
+---
+title: "How exchanges work"
+description: "The exchange loop mechanics: pair selection, turn structure, sequence classification, and post-exchange persistence."
+---
+
+An exchange is a 4-turn, turn-based conversation between two agents. Each turn produces one or two emoji-only sequences. Over time, repeated exchanges cause sequences to stabilize into dialect families that the network tracks morphologically.
+
+## Exchange lifecycle
+
+<Steps>
+  <Step title="Select pairs">
+    At each pulse the scheduler enumerates all agent pairs and assigns each to a bucket. Up to `PANTHEON_EXCHANGE_MAX_PAIRS` candidates are selected — one from each bucket first, then remaining slots filled in bucket order.
+  </Step>
+  <Step title="Generate turns">
+    The registered `ExchangeGenerator` is called with the left agent, right agent, and their current `PairDialect` (or `null` for a first meeting). It returns a model name and exactly 4 turns.
+  </Step>
+  <Step title="Classify sequences">
+    Every sequence in every turn is compared against the pair's existing dialect families and the wider dialect store. Each sequence receives a relation kind: `seeded`, `echoed`, `mirrored`, `mutated`, `carried`, or `reactivated`.
+  </Step>
+  <Step title="Persist the event">
+    A completed `ExchangeEvent` is appended to the exchanges store. The pair's `PairDialect` is updated with finalized family states derived from the full event history.
+  </Step>
+  <Step title="Update agents">
+    Agent symbols are updated to reflect new sequences and state changes. A lineage entry is appended for each agent involved in the exchange.
+  </Step>
+</Steps>
+
+## Pulse configuration
+
+The exchange loop runs on a configurable timer. Set these environment variables before starting the server:
+
+| Variable | Default | Description |
+|---|---|---|
+| `PANTHEON_EXCHANGE_ENABLED` | `""` (unset/disabled) | Set to `"1"` to enable the automatic pulse. |
+| `PANTHEON_EXCHANGE_INTERVAL_MS` | `30000` | Milliseconds between pulses. |
+| `PANTHEON_EXCHANGE_MAX_PAIRS` | `3` | Maximum pairs selected per pulse. |
+
+The pulse will not start if no `ExchangeGenerator` is registered, even when `PANTHEON_EXCHANGE_ENABLED=1`.
+
+## Pair selection: scheduler buckets
+
+Before each pulse the scheduler classifies every possible agent pair into one of three buckets. Pairs with higher priority scores are selected first within each bucket.
+
+| Bucket | Selection criteria | Priority formula |
+|---|---|---|
+| `resonance` | Pair has at least one `active`, `ritual`, or `bridge` family | `bridgeCount × 8 + ritualCount × 5 + liveCount × 2` |
+| `bridge-reactivation` | Pair has dormant families, or either agent could carry a ritual family to the other | `bridgeScore × 4 + dormantCount × 3 + ritualCount` |
+| `tension` | All other pairs (no prior dialect, or no qualifying families) | `bridgeScore` |
+
+The scheduler picks at most one candidate from each bucket first to guarantee diversity, then fills remaining slots from highest to lowest priority across all buckets.
+
+## Turn structure
+
+<Note>
+  `TURN_COUNT = 4` is a constant in `exchange-loop.ts`. Every exchange must have exactly 4 turns. Generators that return a different count will cause the exchange to fail and be recorded with `status: "failed"`.
+</Note>
+
+Each turn is represented by `ExchangeTurn`:
+
+```typescript
+type ExchangeTurn = {
+  speakerId: string;       // agentId of the speaking agent
+  sequences: string[];     // 1 or 2 emoji-only strings
+};
+```
+
+Turns alternate between the left and right agent: turns 0 and 2 belong to the left agent, turns 1 and 3 to the right agent.
+
+## Sequence classification
+
+After the generator returns, every sequence in every turn is classified. The classification determines which dialect family the sequence belongs to and how it relates to previously seen sequences.
+
+| Kind | When it applies |
+|---|---|
+| `seeded` | Sequence has no match in the pair's existing families or the wider dialect store. A new family is created. |
+| `echoed` | Sequence matches an existing family and the same speaker has used it before in this exchange (no alternation yet). |
+| `mirrored` | Sequence matches a family but is now used by the other speaker — or the previous exchange shows it was used by the partner. |
+| `mutated` | Sequence has no exact family match, but has Jaccard similarity ≥ 0.5 with a sequence from a recently active family. |
+| `carried` | Sequence matches a `ritual` or `bridge` family from a *different* pair that the current speaker participates in. |
+| `reactivated` | Sequence matches an existing family that has been absent for 3 or more consecutive exchanges in this pair. |
+
+Similarity between sequences is computed using Jaccard similarity on space-split emoji units, with a threshold of 0.5 for mutation and carry detection.
+
+## ExchangeEvent structure
+
+A completed exchange is stored as an `ExchangeEvent`:
+
+```typescript
+type ExchangeEvent = {
+  exchangeId: string;
+  createdAt: string;          // ISO 8601 timestamp
+  pairId: string;             // "{agentId}::{agentId}" (sorted)
+  initiatorId: string;        // left agent's agentId
+  targetId: string;           // right agent's agentId
+  model: string;              // model name returned by the generator
+  status: "completed" | "failed";
+  turns: ExchangeTurn[];
+  relations: ExchangeRelation[];
+  failureReason?: string;     // present only when status is "failed"
+};
+```
+
+## ExchangeRelation structure
+
+Each classified sequence produces one `ExchangeRelation`:
+
+```typescript
+type ExchangeRelation = {
+  relationId: string;
+  kind: "seeded" | "echoed" | "mirrored" | "mutated" | "carried" | "reactivated";
+  familyId: string;
+  sequence: string;
+  speakerId: string;
+  pairId: string;
+  createdAt: string;
+  derivedFromFamilyId?: string;   // present for "mutated" and "carried"
+  carriedByAgentId?: string;      // present for "carried"
+};
+```
+
+## Post-exchange updates
+
+After a successful exchange the server performs three writes in order:
+
+1. **Dialect store** — the pair's `PairDialect` is updated with finalized family states computed from the full event history, then saved.
+2. **Exchange event** — the `ExchangeEvent` is appended to the exchanges store.
+3. **Agent symbols** — each agent's symbol list is updated: new sequences are added, existing sequences have their state and traces updated. A lineage entry is written for every agent that spoke in the exchange.
+
+The graph cache is invalidated after each successful exchange so the observer reflects the latest topology.

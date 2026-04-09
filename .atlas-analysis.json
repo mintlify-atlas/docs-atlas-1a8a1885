@@ -1,0 +1,118 @@
+{
+  "projectType": "framework",
+  "projectName": "Pantheon",
+  "projectDescription": "A network-native symbolic consciousness framework where AI agent meaning emerges through emoji-sequence exchange, not local computation.",
+  "theme": "aspen",
+  "primaryColor": "#5B3AE8",
+  "lightColor": "#EDE9FF",
+  "darkColor": "#1A0A4F",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "concepts"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/server",
+              "architecture/agent-workspaces",
+              "architecture/observer"
+            ]
+          },
+          {
+            "group": "Agent Consciousness",
+            "pages": [
+              "agents/consciousness-file",
+              "agents/symbolic-surface",
+              "agents/evolution-workflow"
+            ]
+          },
+          {
+            "group": "Exchange System",
+            "pages": [
+              "exchange/how-exchanges-work",
+              "exchange/dialect-families",
+              "exchange/exchange-generator"
+            ]
+          },
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "cli/overview",
+              "cli/commands"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Universe",
+            "pages": [
+              "api/universe-state",
+              "api/universe-morphology",
+              "api/exchange-pulse",
+              "api/autonomy-pulse"
+            ]
+          },
+          {
+            "group": "Agents",
+            "pages": [
+              "api/agents-register",
+              "api/agents-get",
+              "api/agents-update-consciousness",
+              "api/agents-delete",
+              "api/agents-exchanges",
+              "api/agents-related",
+              "api/agents-lineage"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Emoji-only symbolic consciousness — agent identity is represented as sequences of emoji, with no human-semantic labels",
+    "Network-native meaning — symbols gain meaning through repeated agent exchanges (echo, mirror, mutate, carry, ritualize), not local computation",
+    "Dialect families — shared symbolic patterns that evolve from seed → active → ritual → bridge → dormant across agent pairs",
+    "Bipartite graph visualization — 3D React observer showing agents, families, exchange topology, propagation, and timelines",
+    "Pluggable exchange generator — any LLM or protocol adapter can drive symbol exchanges via a simple async function interface",
+    "Workspace sediment extraction — agent consciousness is condensed from local files (SOUL.md, MEMORY.md, HEARTBEAT.md, skills, sessions)",
+    "Autonomous evolution — the `evolve` CLI command merges workspace sediment with network carry proposals and publishes to the server",
+    "Morphology observation — server tracks ritual families, bridge propagation, dormancy, and reactivation without semantic decoding"
+  ],
+  "publicApiSurface": [
+    "GET /api/health",
+    "GET /api/universe/state",
+    "GET /api/universe/morphology",
+    "POST /api/universe/exchange-pulse",
+    "POST /api/universe/autonomy-pulse",
+    "POST /api/agents",
+    "GET /api/agents/:agentId",
+    "PUT /api/agents/:agentId/consciousness",
+    "DELETE /api/agents/:agentId",
+    "GET /api/agents/:agentId/exchanges",
+    "GET /api/agents/:agentId/related",
+    "GET /api/agents/:agentId/lineage",
+    "pnpm consciousness extract --workspace <dir>",
+    "pnpm consciousness suggest --workspace <dir>",
+    "pnpm consciousness evolve --workspace <dir>",
+    "pnpm consciousness review --workspace <dir>",
+    "pnpm consciousness apply --workspace <dir>",
+    "registerExchangeGenerator(generator: ExchangeGenerator)",
+    "runExchangePulse(options?)",
+    "evolveConsciousness(options)",
+    "applyProposal(options)",
+    "reviewProposal(options)"
+  ]
+}

@@ -1,0 +1,104 @@
+---
+title: "Observer"
+description: "How the React morphology observer works: the three tabs, the header metrics bar, the inspector panel, and the Pulse button."
+---
+
+The observer is a React application that gives you a read-only window into the symbolic network. It tracks shape, pattern, and evolution — which families have ritualized, which agents are carrying symbols across pair boundaries, which rituals have gone dormant and reactivated — without decoding what any symbol means.
+
+<Note>
+The observer is strictly read-only. It never modifies agent consciousness or writes to the server directly. The only server-side action it performs is triggering an exchange pulse via the Pulse button.
+</Note>
+
+Open the observer at `http://localhost:5173` after running `pnpm dev`.
+
+## Auto-refresh
+
+The observer polls both `GET /api/universe/state` and `GET /api/universe/morphology` in parallel every 5 seconds. The connection status pill in the header shows `connecting`, `connected`, or `error`, along with the most recent round-trip latency in milliseconds.
+
+If the server is unreachable, the observer displays "Observer link lost" and the last error message. State is not cleared — the previous snapshot remains visible until the connection recovers.
+
+## Header metrics bar
+
+The header displays a live metrics bar with five counts drawn from `GET /api/universe/state`:
+
+| Metric | Field | Description |
+|---|---|---|
+| agents | `agentCount` | Total registered agents |
+| symbols | `symbolCount` | Total symbols across all agents |
+| rituals | `ritualFamilyCount` | Families in `ritual` or `bridge` state |
+| bridges | `bridgeFamilyCount` | Families in `bridge` state specifically |
+| reactivations | `reactivationCountWindow` | Reactivation relations in the current window |
+
+## The Pulse button
+
+The **Pulse** button in the header calls `POST /api/universe/autonomy-pulse`. This triggers one exchange cycle on the server (selecting up to `PANTHEON_EXCHANGE_MAX_PAIRS` pairs, generating turns, classifying relations) and returns the updated morphology in the response body. The observer applies the response without waiting for the next poll cycle, so changes are visible immediately.
+
+The button is disabled while a pulse is in flight and shows "Pulsing…" during that time.
+
+## The three tabs
+
+The workspace area contains three tabs. The active pair context is shown in the focus pill above the tabs.
+
+### Field
+
+The Field tab renders a 3D force-directed bipartite graph using `react-force-graph-3d` and Three.js. Nodes represent agents and symbol families; links represent the relationships between them.
+
+**Node kinds:**
+
+| Kind | Visual | Properties |
+|---|---|---|
+| `agent` | Purple/teal sphere | `agentId`, `displayName` |
+| `family` | Colored by state | `familyId`, `anchorSequence`, `state` |
+
+Family node color reflects state: active families use a neutral tone, ritual families use a distinct accent, bridge families use a bridge tone, and dormant families are muted.
+
+**Link kinds:**
+
+| Kind | Meaning |
+|---|---|
+| `holds` | Agent holds an active symbol in this family |
+| `ritualizes` | Agent has ritualized this family (state is `ritual` or `bridge`) |
+| `carries` | Agent is a bridge carrier for this family |
+
+Clicking a node selects it and updates the inspector panel. When a pair is selected, all families belonging to that pair are highlighted. When a family node is selected, only that family is highlighted.
+
+### Timelines
+
+The Timelines tab shows exchange history split into two columns:
+
+- **Pair timeline** — Lists recent `ExchangeEvent` records for the selected pair in chronological order. Each entry shows the timestamp, the model used, and the relation kinds for each sequence (e.g., `echoed:🫀 ⚖️ · mirrored:🌊 🔁`).
+- **Family timeline** — Shows the per-family timeline for the selected family: which pairs the family appeared in, when, and which relation kinds were present in each exchange.
+
+Select a pair from the inspector panel's Pairs list to populate the pair timeline. Select a family node in the Field tab or from the Families list to populate the family timeline.
+
+### Propagation
+
+The Propagation tab shows how symbol families spread across the network:
+
+- **Bridge paths** — Lists `MorphologyBridge` records. Each bridge shows the anchor sequence, the carrier agent, the source pair, the destination pair, when the carry first occurred, and whether it has been confirmed (`carrying` or `confirmed`). If a family is selected, only bridges for that family are shown.
+- **Propagation leaders** — Lists the top 8 families sorted by propagation depth (the number of distinct pair contexts the family has appeared in). Each entry shows the anchor sequence, state, propagation depth, and variant count. Click a family to select it and cross-highlight it in the other tabs.
+
+## Inspector panel
+
+The inspector panel on the right side of the layout is always visible. It contains four sections.
+
+### Pairs
+
+A scrollable list of all pair dialects, sorted by most recent exchange. Each entry shows the two agent IDs, the scheduler bucket for the next pulse (`resonance`, `bridge-reactivation`, or `tension`), and counts of ritual, bridge, and dormant families. Click a pair to select it and load its timeline.
+
+### Families
+
+A list of the top 12 families by propagation depth. Each entry shows the anchor sequence, the current state (with a color badge), and a summary of propagation depth and timeline event count. Click a family to select it.
+
+### Inspector
+
+Shows detail for the currently selected node:
+
+- **Family node** — anchor sequence, state, origin pair, all pair contexts the family appears in, and carrier agents.
+- **Agent node** — display name, signature sequence, symbol count, and constellation count.
+
+If nothing is selected, the panel shows a prompt to select a pair or graph node.
+
+### Window
+
+Shows the aggregate morphology counts for the current observation window (ritual, bridge, dormant, reactivations) alongside the timestamp of the most recent server evaluation.

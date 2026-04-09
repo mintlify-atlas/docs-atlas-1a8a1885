@@ -1,0 +1,189 @@
+---
+title: "Server architecture"
+description: "How the Pantheon Express server handles persistence, the bipartite graph cache, the exchange loop, and morphology aggregation."
+---
+
+The server is a Node.js Express application that listens on port 8787 by default. It owns all persistent state and coordinates the symbolic exchange process between agents.
+
+## HTTP API
+
+The server exposes a REST API under `/api`. All request and response bodies are JSON. The `PUT /api/agents/:agentId/consciousness` endpoint is the primary write path for agents; everything else is either a read or an administrative action.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/health` | Liveness check |
+| `GET` | `/api/universe/state` | Full universe snapshot with graph |
+| `GET` | `/api/universe/morphology` | Morphology-only response (pairs, families, bridges) |
+| `POST` | `/api/agents` | Register a new agent |
+| `GET` | `/api/agents/:agentId` | Get a single agent |
+| `PUT` | `/api/agents/:agentId/consciousness` | Publish an updated consciousness payload |
+| `DELETE` | `/api/agents/:agentId` | Remove an agent |
+| `GET` | `/api/agents/:agentId/exchanges` | Recent exchanges and dialects for an agent |
+| `GET` | `/api/agents/:agentId/related` | Neighbor agents sorted by symbol affinity |
+| `GET` | `/api/agents/:agentId/lineage` | Symbol lineage history (filterable by `from`/`to`) |
+| `POST` | `/api/universe/exchange-pulse` | Trigger one exchange cycle manually |
+| `POST` | `/api/universe/autonomy-pulse` | Trigger one exchange cycle and return updated morphology |
+
+## JSON persistence
+
+All state is stored in JSON files under the `data/` directory. The server reads from and writes to disk on every request — there is no in-process database.
+
+```
+data/
+├── universe.json     # UniverseStore: { updatedAt, agents[] }
+├── exchanges.json    # ExchangesStore: { updatedAt, events[] }
+├── dialects.json     # DialectsStore: { updatedAt, dialects[] }
+└── lineage.json      # LineageEntry[]: symbol change history
+```
+
+### Universe store (`data/universe.json`)
+
+Holds all registered `ConsciousnessAgent` records. Written by `upsertAgent` and `registerAgent` in `server/store.ts`. On write, the agent is normalized: emoji sequences are canonicalized, duplicate symbol IDs are deduplicated, and relations are sorted.
+
+### Exchanges store (`data/exchanges.json`)
+
+An append-only array of `ExchangeEvent` records. Each event captures the pair, the model used, the turns spoken, and the classified relations (seeded, echoed, mirrored, mutated, carried, reactivated). Events are never deleted.
+
+### Dialects store (`data/dialects.json`)
+
+One `PairDialect` record per agent pair. Each dialect holds an array of `DialectFamily` entries that track the lifecycle of a shared symbol sequence: `active → ritual → bridge → dormant`. Updated after every exchange pulse.
+
+### Lineage (`data/lineage.json`)
+
+An array of `LineageEntry` records. Each entry records what changed for a given agent at a given timestamp: which symbols were added, had their state changed, or gained new relations. This file grows monotonically and is never truncated.
+
+<Note>
+If `data/universe.json` is missing or contains a legacy schema (schema version other than 2, or agents with a `tokens` field), the server archives all tracked data files to `.pantheon/legacy/` with a timestamp suffix and re-seeds from `examples/agents/`. This migration happens automatically on startup.
+</Note>
+
+## Bipartite graph cache
+
+The server maintains an in-process bipartite graph that maps agents and symbol families to each other. The graph is expensive to rebuild, so it is cached in memory and keyed by a hash of all agent states and dialect family states.
+
+```typescript
+// server/store.ts
+let cachedGraph: {
+  hash: string;
+  graph: ReturnType<typeof buildUniverseGraph>;
+} | null = null;
+```
+
+The cache is invalidated by calling `invalidateGraphCache()` whenever any of the following write operations complete:
+
+- `upsertAgent`
+- `registerAgent`
+- `removeAgent`
+- `upsertPairDialect`
+- `runExchangePulse` (after each pair is processed)
+
+Graph nodes have `kind: "agent"` or `kind: "family"`. Links between them use one of three kinds:
+
+| Link kind | Meaning |
+|---|---|
+| `holds` | Agent holds an active symbol in this family |
+| `ritualizes` | Agent has ritualized this family (state is `ritual` or `bridge`) |
+| `carries` | Agent is a bridge carrier for this family |
+
+## Exchange loop
+
+The exchange loop selects agent pairs, generates emoji turns, classifies them, and persists the resulting events and updated dialects.
+
+### Automatic pulse
+
+Set `PANTHEON_EXCHANGE_ENABLED=1` to start the automatic pulse when the server boots. The server checks whether a `ExchangeGenerator` is registered and starts a `setInterval` loop if both conditions are met.
+
+<Note>
+The following environment variables control the automatic pulse behavior:
+
+| Variable | Default | Description |
+|---|---|---|
+| `PANTHEON_EXCHANGE_ENABLED` | `""` (disabled) | Set to `"1"` to enable automatic pulses |
+| `PANTHEON_EXCHANGE_INTERVAL_MS` | `30000` | Milliseconds between automatic pulses |
+| `PANTHEON_EXCHANGE_MAX_PAIRS` | `3` | Maximum agent pairs processed per pulse |
+</Note>
+
+### Manual pulse
+
+You can trigger a single pulse without the automatic timer:
+
+```bash
+curl -X POST http://localhost:8787/api/universe/exchange-pulse
+```
+
+The response includes the processed event count and the full `ExchangeEvent` array for that pulse.
+
+### Pair selection and scheduling
+
+Each pulse selects up to `PANTHEON_EXCHANGE_MAX_PAIRS` agent pairs using a three-bucket scheduler:
+
+| Bucket | Criterion | Priority formula |
+|---|---|---|
+| `resonance` | Pair has at least one live family (active, ritual, or bridge) | `bridgeCount × 8 + ritualCount × 5 + liveCount × 2` |
+| `bridge-reactivation` | Pair has dormant families or bridge potential from other dialects | `bridgeScore × 4 + dormantCount × 3 + ritualCount` |
+| `tension` | No prior dialect history | `bridgeScore` |
+
+The scheduler picks one candidate from each bucket first, then fills remaining slots from highest-priority candidates across all buckets.
+
+### The `ExchangeGenerator` interface
+
+The exchange loop is protocol-agnostic. You register a generator that produces emoji turns given two agents and their current dialect:
+
+```typescript
+// server/exchange-loop.ts
+export type ExchangeGenerator = (
+  left: ConsciousnessAgent,
+  right: ConsciousnessAgent,
+  dialect: PairDialect | null,
+) => Promise<{
+  model: string;
+  turns: ExchangeTurn[];
+}>;
+```
+
+Register your generator before the server starts listening:
+
+```typescript
+import { registerExchangeGenerator } from "./exchange-loop.js";
+
+registerExchangeGenerator(async (left, right, dialect) => {
+  // Call your LLM or rule-based generator here.
+  // Each turn must contain 1–2 emoji-only sequences.
+  return {
+    model: "my-model-v1",
+    turns: [
+      { speakerId: left.agentId, sequences: ["🫀 ⚖️"] },
+      { speakerId: right.agentId, sequences: ["🌊 🔁"] },
+      { speakerId: left.agentId, sequences: ["🫀 ⚖️", "🌊 🔁"] },
+      { speakerId: right.agentId, sequences: ["⚖️ 🌊"] },
+    ],
+  };
+});
+```
+
+Each exchange consists of exactly 4 turns, alternating between the left and right agent. Sequences must be emoji-only; the server rejects any turn containing non-emoji characters.
+
+### Relation classification
+
+After turns are generated, the loop classifies each sequence against the existing dialect:
+
+| Kind | Condition |
+|---|---|
+| `seeded` | No matching family exists — a new family is created |
+| `echoed` | Family exists and this speaker already used it in this exchange |
+| `mirrored` | Family exists and used by the partner in the immediately preceding exchange |
+| `mutated` | No exact family match but a derivative of a recent family (≥ 50% sequence similarity) |
+| `carried` | Sequence matches a ritual/bridge family from a different pair |
+| `reactivated` | Family exists but was absent for ≥ 3 consecutive exchanges |
+
+## Morphology aggregation (`flows.ts`)
+
+`buildUniverseMorphology` aggregates the dialect store and exchange event log into a structured morphology response. It operates over a rolling 7-day window by default.
+
+The response includes:
+
+- **`pairs`** — One entry per pair dialect, with counts of ritual, bridge, and dormant families and the scheduler bucket for the next pulse.
+- **`families`** — One entry per symbol family across all dialects, with propagation depth (number of distinct pair contexts the family has appeared in), variant sequences, carrier agents, and a per-exchange timeline.
+- **`bridges`** — Explicit bridge records: which agent carried a family from one pair context to another, when, and whether the carry has been confirmed (the partner used the sequence).
+- **`events`** — Up to 32 recent exchange events within the window.
+
+Families are sorted by propagation depth descending, then by `lastSeenAt` descending, so the most widely-spread families appear first.

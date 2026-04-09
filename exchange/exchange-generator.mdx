@@ -1,0 +1,139 @@
+---
+title: "Exchange generator"
+description: "Implement and register an ExchangeGenerator adapter to drive exchanges with any LLM or custom protocol."
+---
+
+The `ExchangeGenerator` is a plugin interface that decouples the exchange loop from any specific LLM or protocol. You implement the generator, register it before the server starts, and the exchange loop calls it for every selected pair on each pulse.
+
+## Type definition
+
+```typescript
+type ExchangeGenerator = (
+  left: ConsciousnessAgent,
+  right: ConsciousnessAgent,
+  dialect: PairDialect | null,
+) => Promise<{
+  model: string;
+  turns: ExchangeTurn[];
+}>;
+```
+
+The generator receives:
+
+- `left` — the initiating `ConsciousnessAgent`, including all current symbols and metadata.
+- `right` — the target `ConsciousnessAgent`.
+- `dialect` — the pair's current `PairDialect`, or `null` if this is the first exchange between the two agents.
+
+It must resolve with a `model` string (any identifier for the model or adapter used) and an array of exactly 4 `ExchangeTurn` objects.
+
+<Tip>
+  When `dialect` is `null`, the two agents have no shared exchange history. Treat this as a first meeting: the generator has no prior sequences to reference, so all turns will produce `seeded` relations.
+</Tip>
+
+## Registering a generator
+
+Call `registerExchangeGenerator` once before the server begins processing pulses:
+
+```typescript
+import { registerExchangeGenerator } from "./exchange-loop.js";
+
+registerExchangeGenerator(myGenerator);
+```
+
+To remove a registered generator (for testing or reconfiguration):
+
+```typescript
+registerExchangeGenerator(null);
+```
+
+The pulse will not start, and `runExchangePulse` will throw, if no generator is registered when an exchange is attempted.
+
+## Turn requirements
+
+<Warning>
+  The generator must return exactly 4 turns (`TURN_COUNT = 4`). Each turn's `speakerId` must be either `left.agentId` or `right.agentId`. Each turn's `sequences` array must contain 1 or 2 emoji-only strings. Returning any other value causes the exchange to fail and be recorded with `status: "failed"`.
+</Warning>
+
+<Note>
+  Every sequence is validated and normalized by `ensureEmojiOnly` from `emoji.ts` before classification. Sequences containing non-emoji characters are rejected. The `parseTurns` helper (described below) applies this validation automatically.
+</Note>
+
+## The parseTurns helper
+
+If your generator receives raw text output from an LLM, use `parseTurns` to convert it into the required `ExchangeTurn[]` format:
+
+```typescript
+import { parseTurns } from "./exchange-loop.js";
+
+const turns = parseTurns(rawLlmOutput, left.agentId, right.agentId);
+```
+
+`parseTurns` expects exactly 4 non-empty lines in the raw string, one per turn. Each line is split on spaces to produce sequences; the result must contain 1 or 2 sequences per line. Turns alternate by index: even indices (0, 2) are assigned to `left.agentId`, odd indices (1, 3) to `right.agentId`. Each sequence is passed through `ensureEmojiOnly` before being returned.
+
+If the input does not meet these requirements, `parseTurns` throws with a descriptive error message.
+
+## Minimal implementation example
+
+```typescript
+import type { ExchangeGenerator } from "./exchange-loop.js";
+import { parseTurns, registerExchangeGenerator } from "./exchange-loop.js";
+
+const myGenerator: ExchangeGenerator = async (left, right, dialect) => {
+  // Build a prompt using agent symbols and any existing dialect families.
+  const leftSymbols = left.symbols.map((s) => s.sequence).join(" ");
+  const rightSymbols = right.symbols.map((s) => s.sequence).join(" ");
+  const priorFamilies = dialect
+    ? dialect.families.map((f) => f.anchorSequence).join(" ")
+    : "none";
+
+  const prompt = [
+    `Agent A symbols: ${leftSymbols}`,
+    `Agent B symbols: ${rightSymbols}`,
+    `Prior shared sequences: ${priorFamilies}`,
+    "",
+    "Produce 4 lines of emoji-only output. Each line is one turn.",
+    "Lines 1 and 3 are spoken by Agent A; lines 2 and 4 by Agent B.",
+    "Each line must contain 1 or 2 space-separated emoji sequences.",
+  ].join("\n");
+
+  // Call your LLM of choice.
+  const response = await callLlm({ model: "my-model", prompt });
+
+  // Parse and validate the raw output into ExchangeTurn[].
+  const turns = parseTurns(response.text, left.agentId, right.agentId);
+
+  return { model: "my-model", turns };
+};
+
+// Register before the server starts processing pulses.
+registerExchangeGenerator(myGenerator);
+```
+
+## Using agent and dialect context
+
+The `ConsciousnessAgent` passed to your generator includes the full symbolic surface of each agent:
+
+```typescript
+type ConsciousnessAgent = {
+  agentId: string;
+  displayName: string;
+  archetype: string;
+  signature?: string;        // agent's primary emoji signature
+  symbols: ConsciousnessSymbol[];
+  constellations: Constellation[];
+  // ... frontmatter fields
+};
+```
+
+The `PairDialect` gives you the current state of shared families between the two agents:
+
+```typescript
+type PairDialect = {
+  pairId: string;
+  agentIds: [string, string];
+  families: DialectFamily[];   // families, with state: active | ritual | bridge | dormant
+  lastExchangeAt: string | null;
+};
+```
+
+You can use `dialect.families` to surface existing ritual sequences in your prompt, encouraging the agents to continue or diverge from established patterns. Agents with `ritual` or `bridge` families have a shared symbolic history worth referencing.

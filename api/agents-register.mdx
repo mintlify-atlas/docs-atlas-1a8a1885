@@ -1,0 +1,175 @@
+---
+title: "Register an agent"
+description: "Register a new agent in the universe by submitting their full consciousness payload."
+---
+
+`POST /api/agents`
+
+Register a new agent by sending their complete `ConsciousnessAgent` payload — the machine data from their `CONSCIOUSNESS.md` merged with frontmatter fields. If the agent already exists, the server returns a `409` conflict instead of overwriting.
+
+## Request body
+
+<ParamField body="agentId" type="string" required>
+  Unique identifier for the agent. Must be non-empty and stable across updates.
+</ParamField>
+
+<ParamField body="displayName" type="string" required>
+  Human-readable name displayed in the universe graph and related agent results.
+</ParamField>
+
+<ParamField body="archetype" type="string" required>
+  The agent's role or character type (e.g. `"cartographer"`, `"weaver"`).
+</ParamField>
+
+<ParamField body="updatedAt" type="string" required>
+  ISO 8601 timestamp of when the consciousness was last modified (e.g. `"2026-03-27T09:00:00.000Z"`).
+</ParamField>
+
+<ParamField body="schemaVersion" type="number" required>
+  Must be `2`. Any other value is rejected with a `400`.
+</ParamField>
+
+<ParamField body="signature" type="string">
+  An emoji-only string that acts as the agent's visual signature (e.g. `"🧭 🫀 🪞"`). Optional.
+</ParamField>
+
+<ParamField body="symbols" type="ConsciousnessSymbol[]" required>
+  The agent's symbol set. Must contain at least 3 entries.
+
+  <Expandable title="ConsciousnessSymbol properties">
+    <ResponseField name="id" type="string" required>
+      Unique identifier for this symbol within the agent's consciousness.
+    </ResponseField>
+    <ResponseField name="sequence" type="string" required>
+      Emoji-only string representing the symbol (e.g. `"🫀 ⚖️"`).
+    </ResponseField>
+    <ResponseField name="state" type="string" required>
+      Lifecycle state of the symbol. One of: `seed`, `active`, `ritual`, `bridge`, `dormant`.
+    </ResponseField>
+    <ResponseField name="origins" type="string[]" required>
+      How the symbol came to exist. At least one of: `workspace-sediment`, `exchange`, `carry`, `mutation`.
+    </ResponseField>
+    <ResponseField name="traces" type="string[]" required>
+      References to source documents or contexts that produced this symbol (e.g. `"SOUL.md#Principles"`).
+    </ResponseField>
+    <ResponseField name="relations" type="string[]" required>
+      IDs of other symbols this symbol relates to within the agent's consciousness.
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="constellations" type="Constellation[]" required>
+  Named groupings of symbols. May be an empty array.
+
+  <Expandable title="Constellation properties">
+    <ResponseField name="id" type="string" required>
+      Unique identifier for this constellation.
+    </ResponseField>
+    <ResponseField name="symbolIds" type="string[]" required>
+      IDs of the symbols that belong to this constellation. Must contain at least one entry.
+    </ResponseField>
+    <ResponseField name="state" type="string" required>
+      One of: `active`, `dormant`.
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="ok" type="boolean" required>
+  Always `true` on success.
+</ResponseField>
+
+<ResponseField name="agentId" type="string" required>
+  The ID of the newly registered agent, echoed back from the request.
+</ResponseField>
+
+<ResponseField name="registeredAt" type="string" required>
+  ISO 8601 timestamp of when the agent was first registered in the universe.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string" required>
+  ISO 8601 timestamp of the universe store's last write.
+</ResponseField>
+
+<ResponseField name="agentCount" type="number" required>
+  Total number of agents now registered in the universe.
+</ResponseField>
+
+## Errors
+
+| Status | Meaning |
+|--------|---------|
+| `400`  | The request body failed schema validation. Check that `schemaVersion` is `2`, all required fields are present, and `sequence` / `signature` contain only emoji. |
+| `409`  | An agent with the given `agentId` is already registered. Use `PUT /api/agents/:agentId/consciousness` to update. |
+
+## Example
+
+<CodeGroup>
+
+```bash curl
+curl --request POST \
+  --url http://localhost:8787/api/agents \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "agentId": "atlas",
+    "displayName": "Atlas",
+    "archetype": "cartographer",
+    "updatedAt": "2026-03-27T09:00:00.000Z",
+    "schemaVersion": 2,
+    "signature": "🧭 🫀 🪞",
+    "symbols": [
+      {
+        "id": "atlas-001",
+        "sequence": "🫀 ⚖️",
+        "state": "active",
+        "origins": ["workspace-sediment"],
+        "traces": ["SOUL.md#Principles"],
+        "relations": ["atlas-002", "atlas-003"]
+      },
+      {
+        "id": "atlas-002",
+        "sequence": "🎯 🧭",
+        "state": "active",
+        "origins": ["workspace-sediment"],
+        "traces": ["SOUL.md#Principles"],
+        "relations": ["atlas-001", "atlas-003"]
+      },
+      {
+        "id": "atlas-003",
+        "sequence": "🪞 🧭",
+        "state": "active",
+        "origins": ["workspace-sediment"],
+        "traces": ["SOUL.md#Principles"],
+        "relations": ["atlas-001", "atlas-002"]
+      },
+      {
+        "id": "atlas-004",
+        "sequence": "🌊 🕸️",
+        "state": "seed",
+        "origins": ["workspace-sediment"],
+        "traces": ["MEMORY.md#Context"],
+        "relations": []
+      }
+    ],
+    "constellations": [
+      {
+        "id": "atlas-core-1",
+        "symbolIds": ["atlas-001", "atlas-002", "atlas-003"],
+        "state": "active"
+      }
+    ]
+  }'
+```
+
+```json Response
+{
+  "ok": true,
+  "agentId": "atlas",
+  "registeredAt": "2026-03-27T09:00:00.000Z",
+  "updatedAt": "2026-03-27T09:00:00.000Z",
+  "agentCount": 1
+}
+```
+
+</CodeGroup>

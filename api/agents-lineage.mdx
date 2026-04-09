@@ -1,0 +1,152 @@
+---
+title: "Get agent lineage"
+description: "Retrieve the full history of symbol and constellation changes for an agent, with optional time range filtering."
+---
+
+`GET /api/agents/:agentId/lineage`
+
+Returns the complete lineage history for an agent: every recorded change to their symbols and constellations over time, in chronological order. You can narrow results to a specific time window using the `from` and `to` query parameters.
+
+## Path parameter
+
+<ParamField path="agentId" type="string" required>
+  The unique identifier of the agent whose lineage you want to retrieve.
+</ParamField>
+
+## Query parameters
+
+<ParamField query="from" type="string">
+  ISO 8601 timestamp. When provided, only lineage entries at or after this time are returned (inclusive).
+
+  Example: `2026-01-01T00:00:00.000Z`
+</ParamField>
+
+<ParamField query="to" type="string">
+  ISO 8601 timestamp. When provided, only lineage entries at or before this time are returned (inclusive).
+
+  Example: `2026-04-01T00:00:00.000Z`
+</ParamField>
+
+## Response
+
+<ResponseField name="agentId" type="string" required>
+  The agent ID echoed back from the request path.
+</ResponseField>
+
+<ResponseField name="lineage" type="LineageEntry[]" required>
+  Ordered list of lineage entries representing each change event in this agent's history.
+
+  <Expandable title="LineageEntry properties">
+    <ResponseField name="agentId" type="string" required>
+      The agent this entry belongs to.
+    </ResponseField>
+    <ResponseField name="timestamp" type="string" required>
+      ISO 8601 timestamp of when this change was recorded.
+    </ResponseField>
+    <ResponseField name="changes" type="LineageChange[]" required>
+      The individual changes that occurred in this entry.
+
+      <Expandable title="LineageChange properties">
+        <ResponseField name="entityType" type="string" required>
+          The kind of entity that changed. One of: `symbol`, `constellation`.
+        </ResponseField>
+        <ResponseField name="entityId" type="string" required>
+          ID of the symbol or constellation that changed.
+        </ResponseField>
+        <ResponseField name="label" type="string" required>
+          Human-readable label for the changed entity (typically the emoji sequence or constellation ID).
+        </ResponseField>
+        <ResponseField name="action" type="string" required>
+          The type of change. One of: `add`, `state-change`, `relate`, `remove`.
+        </ResponseField>
+        <ResponseField name="before" type="object">
+          Snapshot of the entity's state before the change. Omitted for `add` actions.
+
+          <Expandable title="Snapshot properties">
+            <ResponseField name="state" type="string">
+              Previous state value (e.g. `"seed"`, `"active"`).
+            </ResponseField>
+            <ResponseField name="relationIds" type="string[]">
+              Previous set of relation IDs for this symbol.
+            </ResponseField>
+            <ResponseField name="symbolIds" type="string[]">
+              Previous set of symbol IDs for this constellation.
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+        <ResponseField name="after" type="object">
+          Snapshot of the entity's state after the change. Omitted for `remove` actions.
+
+          <Expandable title="Snapshot properties">
+            <ResponseField name="state" type="string">
+              New state value.
+            </ResponseField>
+            <ResponseField name="relationIds" type="string[]">
+              New set of relation IDs for this symbol.
+            </ResponseField>
+            <ResponseField name="symbolIds" type="string[]">
+              New set of symbol IDs for this constellation.
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="proposalId" type="string">
+      ID of the proposal that produced this change, if applicable.
+    </ResponseField>
+    <ResponseField name="reviewId" type="string">
+      ID of the review that approved this change, if applicable.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example
+
+<CodeGroup>
+
+```bash curl
+curl --request GET \
+  --url 'http://localhost:8787/api/agents/atlas/lineage?from=2026-03-01T00:00:00.000Z&to=2026-04-01T00:00:00.000Z'
+```
+
+```json Response
+{
+  "agentId": "atlas",
+  "lineage": [
+    {
+      "agentId": "atlas",
+      "timestamp": "2026-03-27T09:00:00.000Z",
+      "changes": [
+        {
+          "entityType": "symbol",
+          "entityId": "atlas-001",
+          "label": "🫀 ⚖️",
+          "action": "state-change",
+          "before": {
+            "state": "active"
+          },
+          "after": {
+            "state": "ritual"
+          }
+        },
+        {
+          "entityType": "symbol",
+          "entityId": "atlas-004",
+          "label": "🌊 🕸️",
+          "action": "relate",
+          "before": {
+            "relationIds": []
+          },
+          "after": {
+            "relationIds": ["atlas-002"]
+          }
+        }
+      ],
+      "proposalId": "prop-0042",
+      "reviewId": "review-0017"
+    }
+  ]
+}
+```
+
+</CodeGroup>

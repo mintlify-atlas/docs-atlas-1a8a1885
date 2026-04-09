@@ -1,0 +1,287 @@
+---
+title: "CLI commands"
+description: "Detailed reference for every Pantheon CLI command: flags, behavior, and example output."
+---
+
+## `extract`
+
+Reads the workspace sediment files (`SOUL.md`, `MEMORY.md`, `HEARTBEAT.md`, `skills/`, `summaries/`, `sessions/`) and condenses them into a `ConsciousnessProposal`. The proposal is written to `.pantheon/consciousness/proposals/<proposalId>.json`.
+
+Extractor mode: `symbolic-condense-v2`
+
+### Usage
+
+```bash
+pnpm consciousness extract --workspace <dir> [--agent-id <id>]
+```
+
+### Flags
+
+<ParamField body="--workspace" type="string" required>
+  Path to the agent workspace directory.
+</ParamField>
+
+<ParamField body="--agent-id" type="string">
+  Overrides the `agentId` resolved from the workspace.
+</ParamField>
+
+### Example output
+
+```
+Wrote proposal 20240315T120000000Z-atlas
+Proposal: /path/to/workspace/.pantheon/consciousness/proposals/20240315T120000000Z-atlas.json
+Review: /path/to/workspace/.pantheon/consciousness/reviews/20240315T120000000Z-atlas.json
+5 accepted changes, 1 held changes
+```
+
+---
+
+## `suggest`
+
+Queries the agent network for symbols already carried by related agents and generates a network-carry proposal. New symbol candidates are filtered to those not already present in the current agent's consciousness.
+
+Extractor mode: `symbolic-network-v2`
+
+### Usage
+
+```bash
+pnpm consciousness suggest --workspace <dir> [--agent-id <id>]
+```
+
+### Flags
+
+<ParamField body="--workspace" type="string" required>
+  Path to the agent workspace directory.
+</ParamField>
+
+<ParamField body="--agent-id" type="string">
+  Overrides the `agentId` resolved from the workspace.
+</ParamField>
+
+### Example output
+
+```
+Wrote proposal 20240315T120001000Z-atlas-suggest
+Proposal: /path/to/workspace/.pantheon/consciousness/proposals/20240315T120001000Z-atlas-suggest.json
+Review: /path/to/workspace/.pantheon/consciousness/reviews/20240315T120001000Z-atlas-suggest.json
+4 accepted changes, 0 held changes
+```
+
+---
+
+## `review`
+
+Inspects a proposal's changes and their suggested decisions, or finalizes those decisions by writing a `ReviewArtifact`.
+
+### Usage
+
+```bash
+pnpm consciousness review \
+  --workspace <dir> \
+  [--proposal <path>] \
+  [--agent-id <id>] \
+  [--decisions-file <path>]
+```
+
+### Flags
+
+<ParamField body="--workspace" type="string" required>
+  Path to the agent workspace directory.
+</ParamField>
+
+<ParamField body="--proposal" type="string">
+  Path to a specific proposal JSON file. Defaults to the most recent proposal in the workspace's proposals directory.
+</ParamField>
+
+<ParamField body="--agent-id" type="string">
+  Overrides the `agentId` resolved from the workspace.
+</ParamField>
+
+<ParamField body="--decisions-file" type="string">
+  Path to a `ReviewDecisionsFile` JSON. When provided, the command applies the overrides and writes a completed `ReviewArtifact` to `.pantheon/consciousness/reviews/<proposalId>.json`. Without this flag, the command only prints the proposal for inspection.
+</ParamField>
+
+### Behavior
+
+**Without `--decisions-file`** — prints each change and its suggested decision to stdout:
+
+```
+symbol:🫀 ⚖️ -> accept
+symbol:🧭 🪞 -> accept
+constellation:🫀 ⚖️ 🧭 🪞 -> hold
+```
+
+Each line follows the format `entityType:sequence -> decision`.
+
+**With `--decisions-file`** — reads the file, validates overrides against the proposal, and writes a completed `ReviewArtifact`:
+
+```
+Wrote review 20240315T120000000Z-atlas-review
+Proposal: /path/to/workspace/.pantheon/consciousness/proposals/20240315T120000000Z-atlas.json
+Review: /path/to/workspace/.pantheon/consciousness/reviews/20240315T120000000Z-atlas.json
+symbol:🫀 ⚖️ -> accept
+symbol:🧭 🪞 -> reject
+constellation:🫀 ⚖️ 🧭 🪞 -> hold
+```
+
+### Decisions file format
+
+```json
+{
+  "proposalId": "20240315T120000000Z-atlas",
+  "overrides": [
+    {
+      "entityId": "3f4a1b2c-...",
+      "finalDecision": "reject",
+      "reason": "Symbol already dormant in prior cycle."
+    }
+  ]
+}
+```
+
+Each entry in `overrides` must reference an `entityId` that exists in the proposal. Duplicate `entityId` values are rejected.
+
+---
+
+## `apply`
+
+Applies all accepted changes from a completed review to `CONSCIOUSNESS.md`, appends a lineage entry, records a history event, and publishes the updated agent to the Pantheon server.
+
+A completed `ReviewArtifact` (written by `review --decisions-file`) is required before you can run `apply`.
+
+### Usage
+
+```bash
+pnpm consciousness apply \
+  --workspace <dir> \
+  [--proposal <path>] \
+  [--review <path>] \
+  [--agent-id <id>] \
+  [--api-base-url <url>]
+```
+
+### Flags
+
+<ParamField body="--workspace" type="string" required>
+  Path to the agent workspace directory.
+</ParamField>
+
+<ParamField body="--proposal" type="string">
+  Path to a specific proposal JSON file. Defaults to the most recent proposal in the workspace's proposals directory.
+</ParamField>
+
+<ParamField body="--review" type="string">
+  Path to a specific review artifact JSON file. Defaults to the review artifact matching the resolved proposal.
+</ParamField>
+
+<ParamField body="--agent-id" type="string">
+  Overrides the `agentId` resolved from the workspace.
+</ParamField>
+
+<ParamField body="--api-base-url" type="string">
+  Overrides the server URL. Defaults to `PANTHEON_API_URL` or `http://localhost:8787`.
+</ParamField>
+
+### Example output
+
+```
+Applied proposal 20240315T120000000Z-atlas
+Review: /path/to/workspace/.pantheon/consciousness/reviews/20240315T120000000Z-atlas.json
+History: /path/to/workspace/.pantheon/consciousness/history.jsonl
+Published at 2024-03-15T12:00:01.000Z
+```
+
+If no accepted changes mutated `CONSCIOUSNESS.md`, the command prints:
+
+```
+No accepted changes mutated CONSCIOUSNESS.md.
+```
+
+---
+
+## `evolve`
+
+Runs the full consciousness evolution lifecycle in a single autonomous step: it extracts workspace sediment, fetches network suggestions, merges the two proposals, auto-accepts changes that cross the mutation threshold, updates `CONSCIOUSNESS.md`, and publishes to the server.
+
+<Tip>
+  Use `evolve` instead of the manual extract → review → apply sequence for routine evolution cycles. It skips the review step and applies all accepted changes autonomously.
+</Tip>
+
+### Usage
+
+```bash
+pnpm consciousness evolve \
+  --workspace <dir> \
+  [--agent-id <id>] \
+  [--api-base-url <url>]
+```
+
+### Flags
+
+<ParamField body="--workspace" type="string" required>
+  Path to the agent workspace directory.
+</ParamField>
+
+<ParamField body="--agent-id" type="string">
+  Overrides the `agentId` resolved from the workspace.
+</ParamField>
+
+<ParamField body="--api-base-url" type="string">
+  Overrides the server URL. Defaults to `PANTHEON_API_URL` or `http://localhost:8787`.
+</ParamField>
+
+### Example output
+
+```
+Evolved proposal 20240315T120000000Z-atlas
+Proposal: /path/to/workspace/.pantheon/consciousness/proposals/20240315T120000000Z-atlas.json
+History: /path/to/workspace/.pantheon/consciousness/history.jsonl
+Published at 2024-03-15T12:00:02.000Z
+```
+
+When no changes cross the mutation threshold:
+
+```
+Evolved proposal 20240315T120000000Z-atlas
+Proposal: /path/to/workspace/.pantheon/consciousness/proposals/20240315T120000000Z-atlas.json
+History: /path/to/workspace/.pantheon/consciousness/history.jsonl
+No autonomous changes crossed the mutation threshold.
+```
+
+---
+
+## Manual workflow
+
+Use the manual workflow when you want to inspect or override individual decisions before applying changes.
+
+<Steps>
+  <Step title="Extract a proposal">
+    Read workspace sediment and generate a proposal JSON.
+
+    ```bash
+    pnpm consciousness extract --workspace ./agents/atlas
+    ```
+  </Step>
+  <Step title="Review the proposal">
+    Print the suggested decisions to stdout.
+
+    ```bash
+    pnpm consciousness review --workspace ./agents/atlas
+    ```
+
+    To override specific decisions, create a decisions file and pass it:
+
+    ```bash
+    pnpm consciousness review \
+      --workspace ./agents/atlas \
+      --decisions-file ./my-decisions.json
+    ```
+  </Step>
+  <Step title="Apply the reviewed proposal">
+    Apply accepted changes to `CONSCIOUSNESS.md` and publish.
+
+    ```bash
+    pnpm consciousness apply --workspace ./agents/atlas
+    ```
+  </Step>
+</Steps>

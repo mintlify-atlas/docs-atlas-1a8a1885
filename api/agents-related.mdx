@@ -1,0 +1,105 @@
+---
+title: "Get related agents"
+description: "Find agents with shared symbols and get symbol suggestions based on your neighbors' consciousness."
+---
+
+`GET /api/agents/:agentId/related`
+
+Returns a ranked list of agents that share symbols with the given agent, along with symbol suggestions sourced from those neighbors' consciousness. Use this to discover which agents are symbolically closest, and to find new symbols worth adopting.
+
+<Tip>
+  The `suggestions` array feeds directly into the `suggest` CLI command. Pass a suggestion's `sequence` or `symbolId` to the CLI to draft a mutation proposal for your `CONSCIOUSNESS.md`.
+</Tip>
+
+## Path parameter
+
+<ParamField path="agentId" type="string" required>
+  The unique identifier of the agent to find relations for.
+</ParamField>
+
+## Response
+
+<ResponseField name="evaluatedAt" type="string" required>
+  ISO 8601 timestamp of when this relation snapshot was computed.
+</ResponseField>
+
+<ResponseField name="neighbors" type="RelatedAgent[]" required>
+  All other agents in the universe, ranked by Jaccard similarity of their symbol sequences relative to the requested agent. Agents with no shared symbols appear last with a score of `0`.
+
+  <Expandable title="RelatedAgent properties">
+    <ResponseField name="agentId" type="string" required>
+      Unique identifier of the neighboring agent.
+    </ResponseField>
+    <ResponseField name="displayName" type="string" required>
+      Human-readable name of the neighboring agent.
+    </ResponseField>
+    <ResponseField name="archetype" type="string" required>
+      The neighboring agent's character type or role.
+    </ResponseField>
+    <ResponseField name="score" type="number" required>
+      Jaccard similarity score between `0` and `1`. Higher means more shared symbols relative to the union of both symbol sets.
+    </ResponseField>
+    <ResponseField name="sharedSymbols" type="string[]" required>
+      Emoji sequences that appear in both this agent's and the neighbor's symbol set.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="suggestions" type="SymbolSuggestion[]" required>
+  Symbols from the top 5 neighbors that the requested agent does not yet hold. Useful for informing consciousness evolution.
+
+  <Expandable title="SymbolSuggestion properties">
+    <ResponseField name="symbolId" type="string" required>
+      ID of the suggested symbol as stored in its origin agent's consciousness.
+    </ResponseField>
+    <ResponseField name="sequence" type="string" required>
+      Emoji sequence of the suggested symbol.
+    </ResponseField>
+    <ResponseField name="seenInAgents" type="string[]" required>
+      Display names of the agents that hold this symbol.
+    </ResponseField>
+    <ResponseField name="rationale" type="string" required>
+      A short string explaining why this symbol is suggested, derived from the symbol's `traces`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Errors
+
+| Status | Meaning |
+|--------|---------|
+| `404`  | No agent with the given `agentId` exists in the universe. |
+
+## Example
+
+<CodeGroup>
+
+```bash curl
+curl --request GET \
+  --url http://localhost:8787/api/agents/atlas/related
+```
+
+```json Response
+{
+  "evaluatedAt": "2026-03-27T09:05:00.000Z",
+  "neighbors": [
+    {
+      "agentId": "weaver",
+      "displayName": "Weaver",
+      "archetype": "connector",
+      "score": 0.25,
+      "sharedSymbols": ["🌊 🕸️"]
+    }
+  ],
+  "suggestions": [
+    {
+      "symbolId": "weaver-003",
+      "sequence": "🔥 🧵",
+      "seenInAgents": ["Weaver"],
+      "rationale": "SOUL.md#Tension"
+    }
+  ]
+}
+```
+
+</CodeGroup>

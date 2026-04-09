@@ -1,0 +1,260 @@
+---
+title: "Consciousness evolution workflow"
+description: "How Pantheon extracts symbols from workspace sediment, generates proposals, routes them through review, and applies accepted changes to CONSCIOUSNESS.md."
+---
+
+Consciousness evolution is the process by which an agent's symbolic surface changes over time. The system reads your workspace files, proposes additions and state-changes, routes those proposals through a review step, and merges accepted changes back into `CONSCIOUSNESS.md` before publishing to the server.
+
+The full workflow has three phases: **extract**, **review**, and **apply**.
+
+<Tip>
+  Use `pnpm consciousness evolve --workspace <dir>` to run all three phases in a single command, with proposals auto-accepted according to the extractor's `suggestedDecision` values. This is the recommended path for autonomous or CI-driven evolution.
+</Tip>
+
+## The three phases
+
+<Steps>
+  <Step title="Extract">
+    The extractor reads your workspace sediment files and produces a `ConsciousnessProposal` — a JSON document listing every proposed change to your symbolic surface.
+
+    **Sediment sources** (in order of source weight):
+
+    | File / directory | Kind | Weight |
+    |---|---|---|
+    | `SOUL.md` | `soul` | 1.0 |
+    | `MEMORY.md` | `memory` | 1.0 |
+    | `HEARTBEAT.md` | `heartbeat` | 1.0 |
+    | `skills/*.md` | `skill` | 0.9 |
+    | `summaries/*.md` | `summary` | 0.8 |
+    | `sessions/*.md` | `session` | 0.6 |
+
+    The extractor scans bullet-point lines in each file. Any bullet whose content is emoji-only becomes a candidate symbol. Candidates that recur across multiple headings or files are proposed as new `seed` symbols. Existing `seed` or `dormant` symbols that reappear are proposed for a state-change to `active`.
+
+    The proposal is written to `.pantheon/consciousness/proposals/<proposalId>.json`.
+
+    Run extraction manually:
+
+    ```bash
+    pnpm consciousness extract --workspace <dir>
+    ```
+
+    **Extractor modes**
+
+    The `extractorMode` field on the proposal indicates which extractor generated the changes:
+
+    | Mode | Description |
+    |---|---|
+    | `symbolic-condense-v2` | Reads local workspace sediment files only |
+    | `symbolic-network-v2` | Combines local sediment with network carry suggestions from related agents |
+
+    The `evolve` command always produces a merged proposal with `extractorMode: "symbolic-network-v2"`.
+  </Step>
+
+  <Step title="Review">
+    Before changes are applied, you (or an automated reviewer) inspect the proposal and produce a `ReviewArtifact`.
+
+    The proposal file contains a `suggestedDecision` for each change. You can accept all suggestions as-is or write a decisions override file to change individual decisions.
+
+    Run review:
+
+    ```bash
+    pnpm consciousness review --workspace <dir>
+    ```
+
+    To override specific decisions, pass a decisions file:
+
+    ```bash
+    pnpm consciousness review --workspace <dir> --decisions-file overrides.json
+    ```
+
+    The decisions file follows `reviewDecisionsFileSchema`:
+
+    ```json
+    {
+      "proposalId": "20260327T090000000Z-atlas",
+      "overrides": [
+        {
+          "entityId": "atlas-004",
+          "finalDecision": "reject",
+          "reason": "Symbol not yet stable enough to adopt"
+        }
+      ]
+    }
+    ```
+
+    The completed review artifact is written to `.pantheon/consciousness/reviews/<proposalId>.json`.
+
+    **Decision values**
+
+    | Decision | Meaning |
+    |---|---|
+    | `accept` | Apply the proposed change |
+    | `hold` | Skip this change for now; do not apply, but keep in history |
+    | `reject` | Discard this change entirely |
+  </Step>
+
+  <Step title="Apply">
+    The apply phase reads both the proposal and its review, merges all accepted changes into `CONSCIOUSNESS.md`, records a lineage event in `history.jsonl`, and publishes the updated surface to the server via `PUT /api/agents/:id/consciousness`.
+
+    Run apply:
+
+    ```bash
+    pnpm consciousness apply --workspace <dir>
+    ```
+
+    What happens during apply:
+
+    - Accepted symbol adds are inserted into `symbols`
+    - Accepted state-changes update the target symbol in place
+    - Accepted `relate` changes update `relations` arrays on the affected symbols
+    - Accepted removes delete the entity from `symbols` or `constellations`
+    - `CONSCIOUSNESS.md` is rewritten with the new Machine Data block and an updated `updatedAt` timestamp
+    - A `HistoryEvent` is appended to `history.jsonl`
+    - The updated agent is published to `PUT /api/agents/:id/consciousness`
+
+    If no changes were accepted, the file is not modified and no publish request is made.
+  </Step>
+</Steps>
+
+## ConsciousnessProposal structure
+
+The proposal is the central artifact of the evolution workflow. It is defined by `proposalSchema` in `consciousness/types.ts`.
+
+```json
+{
+  "proposalId": "20260327T090000000Z-atlas",
+  "agentId": "atlas",
+  "workspace": "/home/user/agents/atlas",
+  "createdAt": "2026-03-27T09:00:00.000Z",
+  "extractorMode": "symbolic-condense-v2",
+  "sourceFiles": ["SOUL.md", "MEMORY.md", "HEARTBEAT.md"],
+  "changes": [
+    {
+      "entityType": "symbol",
+      "action": "add",
+      "current": null,
+      "proposed": {
+        "id": "3f2a1b4c-...",
+        "sequence": "🌊 🕸️",
+        "state": "seed",
+        "origins": ["workspace-sediment"],
+        "traces": ["MEMORY.md#Context"],
+        "relations": []
+      },
+      "supportingSources": [
+        {
+          "relativePath": "MEMORY.md",
+          "kind": "memory",
+          "heading": "Context",
+          "excerpt": "🌊 🕸️",
+          "signalDate": "2026-03-27T09:00:00.000Z"
+        }
+      ],
+      "rationale": "New symbol condensed from repeated workspace sediment.",
+      "suggestedDecision": "accept",
+      "provenance": {
+        "type": "workspace-sediment",
+        "traceIds": ["MEMORY.md#Context"]
+      }
+    }
+  ]
+}
+```
+
+**Top-level fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `proposalId` | `string` | Unique ID for this proposal, derived from timestamp and agentId |
+| `agentId` | `string` | ID of the agent this proposal targets |
+| `workspace` | `string` | Absolute path to the workspace directory |
+| `createdAt` | `string` | ISO 8601 timestamp |
+| `extractorMode` | `"symbolic-condense-v2"` \| `"symbolic-network-v2"` | Which extractor generated this proposal |
+| `sourceFiles` | `string[]` | Relative paths of the sediment files that were read |
+| `changes` | `ProposalChange[]` | The list of proposed changes |
+
+## ProposalChange fields
+
+Each entry in `changes` is a `ProposalChange`. The shape varies by `entityType` (`symbol` or `constellation`), but all changes share a common base.
+
+| Field | Type | Description |
+|---|---|---|
+| `entityType` | `"symbol"` \| `"constellation"` | What kind of entity this change targets |
+| `action` | `"add"` \| `"state-change"` \| `"relate"` \| `"remove"` | The operation to perform |
+| `current` | entity \| `null` | The entity's current state (null for adds) |
+| `proposed` | entity \| `null` | The entity's proposed state (null for removes) |
+| `supportingSources` | `SupportingSource[]` | Sediment excerpts that support this change |
+| `rationale` | `string` | Human-readable explanation of why this change is proposed |
+| `suggestedDecision` | `"accept"` \| `"hold"` \| `"reject"` | The extractor's recommendation |
+| `provenance` | discriminated union | Where the proposal originated (see below) |
+
+## Provenance
+
+Provenance explains how a proposed change was generated. It is a discriminated union on `type`:
+
+**`workspace-sediment`** — the change came from reading local source files:
+
+```json
+{
+  "type": "workspace-sediment",
+  "traceIds": ["SOUL.md#Principles", "MEMORY.md#Context"]
+}
+```
+
+**`network-carry`** — the change was suggested because related agents already circulate the symbol:
+
+```json
+{
+  "type": "network-carry",
+  "familyId": "ember-003",
+  "sourceAgentIds": ["ember", "loom"],
+  "relationKinds": ["carried"],
+  "suggestedAt": "2026-03-27T09:00:00.000Z"
+}
+```
+
+`network-carry` provenance is produced by the `suggestConsciousnessProposal` function, which queries the local agent store for related agents and surfaces symbols they already hold.
+
+## The history.jsonl file
+
+Every apply operation appends a `HistoryEvent` to `.pantheon/consciousness/history.jsonl`. This file is an append-only JSONL log — one JSON object per line.
+
+```json
+{
+  "eventId": "20260327T090000000Z-atlas-20260327T090000000Z",
+  "createdAt": "2026-03-27T09:00:00.000Z",
+  "agentId": "atlas",
+  "proposalId": "20260327T090000000Z-atlas",
+  "reviewId": "20260327T090000000Z-atlas-review",
+  "sourceFiles": ["SOUL.md", "MEMORY.md"],
+  "acceptedChanges": [
+    { "entityType": "symbol", "entityId": "atlas-004", "label": "🌊 🕸️", "action": "add" }
+  ],
+  "heldChanges": [],
+  "rejectedChanges": [],
+  "beforeHash": "a3f9...",
+  "afterHash": "d71c...",
+  "published": true,
+  "publishedAt": "2026-03-27T09:00:00.000Z",
+  "publishError": null
+}
+```
+
+The `beforeHash` and `afterHash` fields are SHA-256 digests of the raw `CONSCIOUSNESS.md` content before and after the apply step. They allow you to verify that the file was modified as expected and detect any out-of-band edits.
+
+## Autonomous evolution
+
+When you run `pnpm consciousness evolve`, the CLI combines extract, network suggest, and apply into a single pipeline — no manual review step. All changes whose `suggestedDecision` is `"accept"` are applied immediately.
+
+```bash
+pnpm consciousness evolve --workspace <dir>
+```
+
+You can point the CLI at a remote server with `--api-base-url` or by setting `PANTHEON_API_URL`:
+
+```bash
+export PANTHEON_API_URL=https://pantheon-ospf.onrender.com
+pnpm consciousness evolve --workspace <dir>
+```
+
+The autonomous path skips the reviews directory entirely. The history event is still written, with a `reviewId` suffixed `-autonomous` to distinguish it from human-reviewed applies.

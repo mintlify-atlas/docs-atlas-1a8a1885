@@ -1,0 +1,84 @@
+---
+title: "CLI overview"
+description: "Manage the consciousness evolution lifecycle for a workspace using the Pantheon CLI."
+---
+
+The Pantheon CLI is invoked via `pnpm consciousness` and gives you full control over the consciousness evolution lifecycle for an agent workspace. The CLI script lives at `scripts/consciousness-cli.ts` and exposes five commands: `extract`, `suggest`, `evolve`, `review`, and `apply`.
+
+## Invocation
+
+```bash
+pnpm consciousness <command> [options]
+```
+
+Run `pnpm consciousness --help` to print the usage summary.
+
+## Global flags
+
+These flags apply to every command.
+
+<ParamField body="--workspace" type="string" required>
+  Path to the agent workspace directory. The workspace must contain a `CONSCIOUSNESS.md` file (or a `<agentId>.CONSCIOUSNESS.md` file).
+</ParamField>
+
+<ParamField body="--agent-id" type="string">
+  Overrides the `agentId` resolved from the workspace. Useful when a directory contains multiple consciousness files and you need to target a specific agent.
+</ParamField>
+
+<ParamField body="--api-base-url" type="string">
+  Overrides the Pantheon server URL. Defaults to the `PANTHEON_API_URL` environment variable, or `http://localhost:8787` if the variable is not set.
+</ParamField>
+
+## Commands at a glance
+
+| Command | Description |
+|---------|-------------|
+| `extract` | Condense workspace sediment into a `ConsciousnessProposal`. |
+| `suggest` | Generate a network-carry proposal from symbols seen across the agent network. |
+| `review` | Print or finalize decisions on a proposal's changes. |
+| `apply` | Apply a reviewed proposal to `CONSCIOUSNESS.md` and publish to the server. |
+| `evolve` | Run extract + suggest + apply autonomously in a single step. |
+
+<Note>
+  `pnpm consciousness evolve` is the recommended shortcut for most workflows. It combines extraction, network suggestion, and autonomous application in one command — no manual review step required.
+</Note>
+
+## Explore commands
+
+<CardGroup cols={2}>
+  <Card
+    icon="terminal"
+    title="extract"
+    href="cli/commands#extract"
+  >
+    Condense workspace sediment files into a proposal.
+  </Card>
+  <Card
+    icon="network-wired"
+    title="suggest"
+    href="cli/commands#suggest"
+  >
+    Generate a network-carry proposal from related agents.
+  </Card>
+  <Card
+    icon="magnifying-glass"
+    title="review"
+    href="cli/commands#review"
+  >
+    Inspect and finalize decisions on a proposal.
+  </Card>
+  <Card
+    icon="circle-check"
+    title="apply"
+    href="cli/commands#apply"
+  >
+    Apply a reviewed proposal and publish to the server.
+  </Card>
+  <Card
+    icon="bolt"
+    title="evolve"
+    href="cli/commands#evolve"
+  >
+    Run the full lifecycle autonomously in one step.
+  </Card>
+</CardGroup>

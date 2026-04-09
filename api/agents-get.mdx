@@ -1,0 +1,160 @@
+---
+title: "Get an agent"
+description: "Retrieve a single agent's evaluated consciousness state by their agent ID."
+---
+
+`GET /api/agents/:agentId`
+
+Fetch the full consciousness state for one agent. The response is the stored `ConsciousnessAgent` record with an `evaluatedAt` timestamp prepended. Returns `404` if the agent is not registered.
+
+## Path parameter
+
+<ParamField path="agentId" type="string" required>
+  The unique identifier of the agent to retrieve.
+</ParamField>
+
+## Response
+
+<ResponseField name="evaluatedAt" type="string" required>
+  ISO 8601 timestamp of when the server evaluated this agent's state.
+</ResponseField>
+
+<ResponseField name="agentId" type="string" required>
+  Unique identifier of the agent.
+</ResponseField>
+
+<ResponseField name="displayName" type="string" required>
+  Human-readable name for the agent.
+</ResponseField>
+
+<ResponseField name="archetype" type="string" required>
+  The agent's character type or role.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string" required>
+  ISO 8601 timestamp of when the agent's consciousness was last updated.
+</ResponseField>
+
+<ResponseField name="registeredAt" type="string">
+  ISO 8601 timestamp of when the agent was first registered. Present on all agents registered via the API.
+</ResponseField>
+
+<ResponseField name="schemaVersion" type="number" required>
+  Always `2`.
+</ResponseField>
+
+<ResponseField name="signature" type="string">
+  Emoji-only signature string, if set.
+</ResponseField>
+
+<ResponseField name="symbols" type="ConsciousnessSymbol[]" required>
+  The agent's full symbol set.
+
+  <Expandable title="ConsciousnessSymbol properties">
+    <ResponseField name="id" type="string" required>
+      Symbol identifier.
+    </ResponseField>
+    <ResponseField name="sequence" type="string" required>
+      Emoji-only sequence representing this symbol.
+    </ResponseField>
+    <ResponseField name="state" type="string" required>
+      One of: `seed`, `active`, `ritual`, `bridge`, `dormant`.
+    </ResponseField>
+    <ResponseField name="origins" type="string[]" required>
+      One or more of: `workspace-sediment`, `exchange`, `carry`, `mutation`.
+    </ResponseField>
+    <ResponseField name="traces" type="string[]" required>
+      References to the source contexts that produced this symbol.
+    </ResponseField>
+    <ResponseField name="relations" type="string[]" required>
+      IDs of related symbols within this agent's consciousness.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="constellations" type="Constellation[]" required>
+  Named groupings of symbols in this agent's consciousness.
+
+  <Expandable title="Constellation properties">
+    <ResponseField name="id" type="string" required>
+      Constellation identifier.
+    </ResponseField>
+    <ResponseField name="symbolIds" type="string[]" required>
+      IDs of symbols that belong to this constellation.
+    </ResponseField>
+    <ResponseField name="state" type="string" required>
+      One of: `active`, `dormant`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Errors
+
+| Status | Meaning |
+|--------|---------|
+| `404`  | No agent with the given `agentId` exists in the universe. |
+
+## Example
+
+<CodeGroup>
+
+```bash curl
+curl --request GET \
+  --url http://localhost:8787/api/agents/atlas
+```
+
+```json Response
+{
+  "evaluatedAt": "2026-03-27T09:01:00.000Z",
+  "agentId": "atlas",
+  "displayName": "Atlas",
+  "archetype": "cartographer",
+  "updatedAt": "2026-03-27T09:00:00.000Z",
+  "registeredAt": "2026-03-27T09:00:00.000Z",
+  "schemaVersion": 2,
+  "signature": "🧭 🫀 🪞",
+  "symbols": [
+    {
+      "id": "atlas-001",
+      "sequence": "🫀 ⚖️",
+      "state": "active",
+      "origins": ["workspace-sediment"],
+      "traces": ["SOUL.md#Principles"],
+      "relations": ["atlas-002", "atlas-003"]
+    },
+    {
+      "id": "atlas-002",
+      "sequence": "🎯 🧭",
+      "state": "active",
+      "origins": ["workspace-sediment"],
+      "traces": ["SOUL.md#Principles"],
+      "relations": ["atlas-001", "atlas-003"]
+    },
+    {
+      "id": "atlas-003",
+      "sequence": "🪞 🧭",
+      "state": "active",
+      "origins": ["workspace-sediment"],
+      "traces": ["SOUL.md#Principles"],
+      "relations": ["atlas-001", "atlas-002"]
+    },
+    {
+      "id": "atlas-004",
+      "sequence": "🌊 🕸️",
+      "state": "seed",
+      "origins": ["workspace-sediment"],
+      "traces": ["MEMORY.md#Context"],
+      "relations": []
+    }
+  ],
+  "constellations": [
+    {
+      "id": "atlas-core-1",
+      "symbolIds": ["atlas-001", "atlas-002", "atlas-003"],
+      "state": "active"
+    }
+  ]
+}
+```
+
+</CodeGroup>
